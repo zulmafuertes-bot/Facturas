@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Be'er Sheva 113 - Gestor de Documentos</title>
+    <!-- Librería para generar el PDF PURO (Vectorial) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+    <!-- Librería para unir PDFs de anexos (Merge) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <style>
+        /* ESTILOS DE LA INTERFAZ DE USUARIO */
+        :root { --primary: #6b7260; --bg: #f4efea; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #e9e9e9; margin: 0; padding: 20px; display: flex; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex: 1; }
+        .panel-form { max-width: 550px; max-height: 95vh; overflow-y: auto; }
+        h2, h3 { color: var(--primary); margin-top: 0; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #333; }
+        input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-family: inherit; }
+        button { background-color: var(--primary); color: white; border: none; padding: 10px 15px; margin-top: 15px; border-radius: 4px; cursor: pointer; font-size: 15px; width: 100%; font-weight: bold; transition: 0.2s; }
+        button:hover { background-color: #555b4c; }
+        .btn-secondary { background-color: #888; }
+        .btn-secondary:hover { background-color: #666; }
+        .row { display: flex; gap: 10px; }
+        .row > div { flex: 1; }
+        .item-list { background: #f9f9f9; padding: 15px; margin-top: 10px; border-left: 4px solid var(--primary); border-radius: 4px; }
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #ccc; }
+        .tab { padding: 10px 20px; cursor: pointer; font-weight: bold; color: #666; }
+        .tab.active { border-bottom: 3px solid var(--primary); color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .checkbox-row { display: flex; align-items: center; margin-top: 15px; background: #e8f5e9; padding: 10px; border-radius: 4px; border: 1px solid #c8e6c9;}
+        .checkbox-row input { width: auto; margin: 0 10px 0 0; transform: scale(1.5); }
+        .checkbox-row label { margin: 0; font-size: 15px; color: #2e7d32; cursor: pointer; }
+        
+        /* ESTILOS DEL PREVISUALIZADOR (No afectan al PDF puro) */
+        #pdf-container { width: 800px; background-color: var(--bg); padding: 40px; box-sizing: border-box; color: #1a1a1a; font-family: Arial, sans-serif; margin: 0 auto; position: relative; }
+        .stamp-pagado { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 70px; font-weight: bold; color: rgba(183, 28, 28, 0.4); border: 6px solid rgba(183, 28, 28, 0.4); border-radius: 15px; padding: 10px 40px; text-transform: uppercase; letter-spacing: 5px; display: none; z-index: 100; }
+        .pdf-top-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .pdf-header h1 { font-family: 'Times New Roman', Times, serif; font-size: 24px; margin: 0; color: #222; text-transform: uppercase; font-weight: normal; }
+        .pdf-header h2 { font-family: 'Times New Roman', Times, serif; font-size: 18px; margin: 0 0 5px 0; color: #222; font-weight: normal; }
+        .doc-title-main { font-size: 18px; font-weight: bold; text-transform: uppercase; text-align: right; }
+        .layout-standard { display: flex; justify-content: space-between; font-size: 12px; line-height: 1.5; margin-bottom: 20px; }
+        .pdf-client-info { text-align: right; }
+        .layout-cc { text-align: center; font-size: 13px; line-height: 1.6; margin-bottom: 20px; display: none; }
+        .layout-cc .cc-client-block { display: inline-block; text-align: center; margin-bottom: 15px; }
+        .layout-cc .cc-debe-block { margin-top: 10px; }
+        .layout-cc .cc-amount { text-transform: uppercase; margin: 10px 0; }
+        .pdf-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .pdf-table th { background-color: var(--primary); color: white; padding: 8px; text-align: center; font-weight: normal; }
+        .pdf-table td { padding: 8px; border-bottom: 1px solid #d4d4d4; }
+        .pdf-table th:first-child, .pdf-table td:first-child { text-align: left; width: 45%; }
+        .pdf-table th:not(:first-child), .pdf-table td:not(:first-child) { text-align: center; }
+        .pdf-totals { width: 250px; float: right; margin-top: 15px; font-size: 13px; }
+        .pdf-totals div { display: flex; justify-content: space-between; padding: 6px 8px; background-color: #c4c5be; margin-bottom: 2px;}
+        .pdf-totals .total-abono { background-color: #e0e0e0; color: #d32f2f; font-weight: bold; }
+        .pdf-totals .total-final { background-color: var(--primary); color: white; font-weight: bold; font-size: 14px; }
+        .clear { clear: both; }
+        .dynamic-note { margin-top: 30px; font-size: 11px; max-width: 70%; line-height: 1.5; }
+        .signature-line { border-top: 1px solid #000; width: 200px; margin-top: 40px; margin-bottom: 5px; }
+        .pdf-footer { margin-top: 30px; font-size: 11px; border-top: 2px solid var(--primary); padding-top: 10px; display: flex; justify-content: space-between; }
+        .pdf-footer ul { list-style: none; padding: 0; margin: 5px 0 0 0; }
+        .pdf-footer li { margin-bottom: 2px; }
+        .pdf-footer-brand { font-family: 'Times New Roman', Times, serif; font-size: 16px; }
+
+        #loadingOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; color: white; justify-content: center; align-items: center; font-size: 20px; flex-direction: column; text-align: center; }
+        .spinner { border: 6px solid #444; border-top: 6px solid #a3b18a; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <div>Construyendo PDF Puro...<br><small style="font-size:14px; color:#ccc;">Procesando vectores y uniendo anexos</small></div>
+    </div>
+
+    <!-- PANEL DE CONTROLES -->
+    <div class="panel panel-form">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('generador')">Generar Documento</div>
+            <div class="tab" onclick="switchTab('configuracion')">Mi Empresa</div>
+        </div>
+
+        <div id="tab-generador" class="tab-content active">
+            <div class="row">
+                <div>
+                    <label>Tipo de Documento</label>
+                    <select id="docType" onchange="updateFormUI(); updatePreview();">
+                        <option value="Cp">Soporte de Pago Interno (Cp)</option>
+                        <option value="Cc">Cuenta de Cobro (Cc)</option>
+                        <option value="Cz">Cotización (Cz)</option>
+                    </select>
+                </div>
+                <div><label>Consecutivo</label><input type="text" id="docNumber" readonly style="background:#eee;"></div>
+            </div>
+
+            <div id="pagoToggleContainer" class="checkbox-row" style="display:none;">
+                <input type="checkbox" id="isPaid" onchange="updatePreview()">
+                <label for="isPaid"><strong>Sellar como PAGADO</strong></label>
+            </div>
+
+            <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+            <h3>Datos del Cliente</h3>
+            
+            <label>Nombre / Razón Social</label>
+            <input type="text" id="clientName" placeholder="Ej: Consorcio Movilidad Sostenible" oninput="updatePreview()">
+            <div class="row">
+                <div style="flex: 0.4;">
+                    <label>Tipo ID</label>
+                    <select id="clientIdType" onchange="updatePreview()"><option value="NIT">NIT</option><option value="C.C.">C.C.</option><option value="C.E.">C.E.</option><option value="Pasaporte">Pasaporte</option></select>
+                </div>
+                <div style="flex: 1;"><label>Número de Identificación</label><input type="text" id="clientNit" placeholder="Ej: 901900633-2" oninput="updatePreview()"></div>
+            </div>
+            <div class="row">
+                <div><label>Dirección</label><input type="text" id="clientAddress" placeholder="Ej: Calle 100 #15-20" oninput="updatePreview()"></div>
+                <div><label>Teléfono</label><input type="text" id="clientPhone" placeholder="Ej: 310 123 4567" oninput="updatePreview()"></div>
+            </div>
+
+            <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+            <h3>Datos de la Estadía</h3>
+            <div class="row">
+                <div><label>Fecha Emisión Doc.</label><input type="date" id="docDate" onchange="updatePreview()"></div>
+                <div id="quoteValDiv" style="display:none;"><label>Validez Cotización</label>
+                    <select id="quoteValidity" onchange="updatePreview()"><option value="15 días">15 días</option><option value="30 días">30 días</option><option value="5 días">5 días</option></select>
+                </div>
+            </div>
+            <div class="row">
+                <div><label>Check-In</label><input type="date" id="checkIn" onchange="calcNights()"></div>
+                <div><label>Check-Out</label><input type="date" id="checkOut" onchange="calcNights()"></div>
+            </div>
+            <div style="text-align: right; font-weight: bold; color: var(--primary); font-size: 14px; margin-top: 5px;" id="nightsLabel"></div>
+            
+            <label>Nombre del Huésped (Opcional)</label><input type="text" id="guestName" oninput="updatePreview()">
+
+            <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+            <h3>Servicios y Pagos</h3>
+            <div id="itemsContainer">
+                <div class="item-list">
+                    <label>Descripción del servicio</label><input type="text" class="item-desc" value="Habitación doble deluxe para una persona, desayuno incluido" oninput="updatePreview()">
+                    <div class="row">
+                        <div><label>Precio Unitario ($)</label><input type="number" class="item-price" value="105000" oninput="updatePreview()"></div>
+                        <div><label>Cantidad</label><input type="number" class="item-qty" value="1" oninput="updatePreview()"></div>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-secondary" onclick="addItem()">+ Añadir otro servicio</button>
+
+            <div style="background: #fff3e0; padding: 10px; border-radius: 4px; border: 1px solid #ffcc80; margin-top: 15px;">
+                <label style="color:#e65100; margin-top:0;">Abono / Anticipo ($)</label>
+                <input type="number" id="abonoAmount" value="0" oninput="updatePreview()">
+            </div>
+
+            <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
+            <h3>Documentos Anexos</h3>
+            <label>Adjuntar archivos de soporte (RUT, RNT, Bancario) (Solo PDFs)</label>
+            <input type="file" id="attachFiles" multiple accept=".pdf" style="background:#fff;">
+
+            <button onclick="generateMergedPDF()" style="margin-top: 30px; font-size: 18px; padding: 15px;">📥 GENERAR DOCUMENTO COMPLETO</button>
+        </div>
+
+        <div id="tab-configuracion" class="tab-content">
+            <h2>Datos de Mi Empresa</h2>
+            <label>Nombre Comercial</label><input type="text" id="cfgName" value="BE'ER SHEVA 113">
+            <label>Subtítulo / Régimen</label><input type="text" id="cfgSub" value="CASA DE HUÉSPEDES">
+            <label>RNT</label><input type="text" id="cfgRnt" value="275191">
+            <label>Representante Legal</label><input type="text" id="cfgRepName" value="Sebastián Aponte">
+            <label>Documento (NIT / CC)</label><input type="text" id="cfgNit" value="1121851146-8">
+            <label>Dirección</label><input type="text" id="cfgDir" value="Calle 113 #55-84">
+            <label>Teléfono</label><input type="text" id="cfgTel" value="(+57) 311 495 1646">
+            <label>Email</label><input type="text" id="cfgEmail" value="beersheva113@gmail.com">
+            <label>Datos Bancarios</label><textarea id="cfgBank" rows="4">Nequi: 3114951646
+Cuenta de ahorros Bancolombia: 033-877297-38</textarea>
+            <button onclick="saveSettings()">Guardar Configuración</button>
+        </div>
+    </div>
+
+    <!-- PANEL DE VISTA PREVIA VISUAL (REFERENCIAL) -->
+    <div class="panel" style="background:#888; display:flex; justify-content:center; align-items:flex-start; overflow-y:auto; padding:20px;">
+        <div id="pdf-container">
+            <div style="background: #fff3cd; color: #856404; padding: 5px 10px; margin-bottom: 15px; font-size: 11px; text-align: center; font-weight: bold; border-radius: 4px;">
+                VISTA PREVIA VISUAL. EL ARCHIVO SE DESCARGARÁ COMO PDF PURO VECTORIAL.
+            </div>
+            <div id="stamp" class="stamp-pagado">PAGADO</div>
+            <div class="pdf-top-bar">
+                <div class="pdf-header"><h1 id="out-name"></h1><h2 id="out-sub"></h2><div>RNT <span id="out-rnt"></span></div></div>
+                <div class="doc-title-main" id="out-main-title"></div>
+            </div>
+            <div id="layout-standard" class="layout-standard">
+                <div class="pdf-company-info"><div style="font-weight:bold;" id="out-sub-title"></div><div>N° <span id="out-doc-number-std"></span></div><div>FECHA: <span id="out-date-std"></span></div><div>Bogotá D.C.</div><div><span id="out-my-nit-std"></span> <span id="out-my-rep-std"></span></div></div>
+                <div class="pdf-client-info"><div style="font-weight:bold;">CLIENTE:</div><div id="out-client-name-std" style="font-weight:bold;"></div><div id="out-client-id-std"></div><div id="out-client-dir-std"></div><div id="out-client-tel-std"></div></div>
+            </div>
+            <div id="layout-cc" class="layout-cc">
+                <div class="cc-client-block"><div style="font-weight:bold;">EMPRESA / CLIENTE:</div><div id="out-client-name-cc" style="font-weight:bold;"></div><div id="out-client-id-cc"></div><div id="out-client-dir-cc"></div><div id="out-client-tel-cc"></div></div>
+                <div class="cc-debe-block"><div><strong>DEBE A:</strong></div><div id="out-my-rep-cc" style="font-weight:bold;"></div><div id="out-my-nit-cc"></div></div>
+                <div class="cc-amount">La suma de: <span id="out-amount-words" style="font-weight:bold;"></span> (<span id="out-amount-numbers"></span>)</div>
+                <div>Por concepto de:</div>
+            </div>
+            <div id="out-booking-details" style="background:#e9eadf; padding:8px; font-size:11px; margin-bottom:15px; display:none; text-align:center;">
+                <span id="out-checkin-container"><strong>CHECK IN:</strong> <span id="out-checkin"></span> &nbsp;|&nbsp; </span>
+                <span id="out-checkout-container"><strong>CHECK OUT:</strong> <span id="out-checkout"></span> &nbsp;|&nbsp; </span>
+                <span id="out-nights-container"><strong>DURACIÓN:</strong> <span id="out-nights"></span> &nbsp;|&nbsp; </span>
+                <span id="out-guest-container"><strong>HUÉSPED:</strong> <span id="out-guest"></span></span>
+            </div>
+            <table class="pdf-table">
+                <thead><tr><th>DESCRIPCIÓN</th><th>PRECIO</th><th>CANTIDAD</th><th>SUBTOTAL</th></tr></thead>
+                <tbody id="out-table-body"></tbody>
+            </table>
+            <div class="pdf-totals">
+                <div><span>SUB TOTAL:</span> <span id="out-subtotal"></span></div>
+                <div id="out-abono-row" class="total-abono" style="display:none;"><span>ABONO:</span> <span id="out-abono"></span></div>
+                <div class="total-final"><span id="out-total-label">TOTAL:</span> <span id="out-total"></span></div>
+            </div>
+            <div class="clear"></div>
+            <div class="dynamic-note" id="out-note"></div>
+            <div id="out-signature" style="display:none;"><div class="signature-line"></div><div id="out-sig-name" style="font-weight:bold;"></div><div id="out-sig-id"></div></div>
+            <div class="pdf-footer">
+                <div><strong>CONTACTO:</strong><ul><li><span id="out-dir"></span></li><li><span id="out-tel"></span></li><li><span id="out-email"></span></li></ul></div>
+                <div style="text-align: right;"><div class="pdf-footer-brand" id="out-footer-brand"></div><div>Bogotá, Colombia</div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UTILIDADES ---
+        const Unidades = (num) => { switch(num) { case 1: return 'UN'; case 2: return 'DOS'; case 3: return 'TRES'; case 4: return 'CUATRO'; case 5: return 'CINCO'; case 6: return 'SEIS'; case 7: return 'SIETE'; case 8: return 'OCHO'; case 9: return 'NUEVE'; default: return ''; } };
+        const Decenas = (num) => { let decena = Math.floor(num/10); let unidad = num - (decena * 10); switch(decena) { case 1: switch(unidad) { case 0: return 'DIEZ'; case 1: return 'ONCE'; case 2: return 'DOCE'; case 3: return 'TRECE'; case 4: return 'CATORCE'; case 5: return 'QUINCE'; default: return 'DIECI' + Unidades(unidad); } case 2: switch(unidad) { case 0: return 'VEINTE'; default: return 'VEINTI' + Unidades(unidad); } case 3: return DecenasY('TREINTA', unidad); case 4: return DecenasY('CUARENTA', unidad); case 5: return DecenasY('CINCUENTA', unidad); case 6: return DecenasY('SESENTA', unidad); case 7: return DecenasY('SETENTA', unidad); case 8: return DecenasY('OCHENTA', unidad); case 9: return DecenasY('NOVENTA', unidad); case 0: return Unidades(unidad); } };
+        const DecenasY = (strSin, numUnidades) => { return numUnidades > 0 ? strSin + ' Y ' + Unidades(numUnidades) : strSin; };
+        const Centenas = (num) => { let centenas = Math.floor(num / 100); let decenas = num - (centenas * 100); switch(centenas) { case 1: return decenas > 0 ? 'CIENTO ' + Decenas(decenas) : 'CIEN'; case 2: return 'DOSCIENTOS ' + Decenas(decenas); case 3: return 'TRESCIENTOS ' + Decenas(decenas); case 4: return 'CUATROCIENTOS ' + Decenas(decenas); case 5: return 'QUINIENTOS ' + Decenas(decenas); case 6: return 'SEISCIENTOS ' + Decenas(decenas); case 7: return 'SETECIENTOS ' + Decenas(decenas); case 8: return 'OCHOCIENTOS ' + Decenas(decenas); case 9: return 'NOVECIENTOS ' + Decenas(decenas); default: return Decenas(decenas); } };
+        const Seccion = (num, divisor, strSingular, strPlural) => { let cientos = Math.floor(num / divisor); let resto = num - (cientos * divisor); let letras = ''; if (cientos > 0) letras = cientos > 1 ? Centenas(cientos) + ' ' + strPlural : strSingular; else letras = strSingular; if (resto > 0) letras += ''; return letras; };
+        const Miles = (num) => { let divisor = 1000; let cientos = Math.floor(num / divisor); let resto = num - (cientos * divisor); let strMiles = Seccion(num, divisor, 'UN MIL', 'MIL'); let strCentenas = Centenas(resto); return strMiles == '' || cientos === 0 ? strCentenas : strMiles + ' ' + strCentenas; };
+        const Millones = (num) => { let divisor = 1000000; let cientos = Math.floor(num / divisor); let resto = num - (cientos * divisor); let strMillones = Seccion(num, divisor, 'UN MILLON', 'MILLONES'); let strMiles = Miles(resto); return strMillones == '' || cientos === 0 ? strMiles : strMillones + ' ' + strMiles; };
+        const NumeroALetras = (num) => { if (num === 0) return 'CERO PESOS M/CTE.'; return (Millones(num) + ' PESOS M/CTE.').trim(); };
+
+        function switchTab(tabId) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active')); event.target.classList.add('active'); document.getElementById('tab-' + tabId).classList.add('active'); }
+        function getBaseDate() { let d = document.getElementById('docDate').value; return d ? new Date(d + 'T00:00:00') : new Date(); }
+        function getConsecutivo(tipo) { const d = getBaseDate(); const f = d.getFullYear().toString() + (d.getMonth()+1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0'); let c = JSON.parse(localStorage.getItem('beerShevaCounters')) || {}; let k = `${tipo}-${f}`; if(!c[k]) c[k] = 1; return `${tipo}-${f}-${c[k].toString().padStart(2, '0')}`; }
+        function incrementarConsecutivo(tipo) { const d = getBaseDate(); const f = d.getFullYear().toString() + (d.getMonth()+1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0'); let c = JSON.parse(localStorage.getItem('beerShevaCounters')) || {}; let k = `${tipo}-${f}`; c[k] = (c[k] || 1) + 1; localStorage.setItem('beerShevaCounters', JSON.stringify(c)); }
+        
+        function calcNights() {
+            const ci = document.getElementById('checkIn').value; const co = document.getElementById('checkOut').value;
+            let nochesStr = "";
+            if(ci && co) { const d1 = new Date(ci + 'T00:00:00'); const d2 = new Date(co + 'T00:00:00'); const diff = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)); if(diff > 0) { nochesStr = `${diff} Noches`; document.getElementById('nightsLabel').innerText = `Estadía: ${nochesStr}`; } else document.getElementById('nightsLabel').innerText = "Fechas inválidas"; } else document.getElementById('nightsLabel').innerText = "";
+            document.getElementById('nightsLabel').setAttribute('data-nights', nochesStr); updatePreview();
+        }
+
+        function loadSettings() { const s = JSON.parse(localStorage.getItem('beerShevaSettings')); if(s) { ['Name','Sub','Rnt','RepName','Nit','Dir','Tel','Email','Bank'].forEach(k => document.getElementById('cfg'+k).value = s[k.toLowerCase()]); } applySettingsToPreview(); }
+        function saveSettings() { const s = {}; ['Name','Sub','Rnt','RepName','Nit','Dir','Tel','Email','Bank'].forEach(k => s[k.toLowerCase()] = document.getElementById('cfg'+k).value); localStorage.setItem('beerShevaSettings', JSON.stringify(s)); alert('Configuración guardada.'); applySettingsToPreview(); updatePreview(); }
+        function applySettingsToPreview() { document.getElementById('out-name').innerText = document.getElementById('cfgName').value; document.getElementById('out-sub').innerText = document.getElementById('cfgSub').value; document.getElementById('out-rnt').innerText = document.getElementById('cfgRnt').value; document.getElementById('out-dir').innerText = document.getElementById('cfgDir').value; document.getElementById('out-tel').innerText = document.getElementById('cfgTel').value; document.getElementById('out-email').innerText = document.getElementById('cfgEmail').value; document.getElementById('out-footer-brand').innerText = document.getElementById('cfgName').value; document.getElementById('out-my-nit-std').innerText = document.getElementById('cfgNit').value; document.getElementById('out-my-rep-std').innerText = document.getElementById('cfgRepName').value; document.getElementById('out-my-rep-cc').innerText = document.getElementById('cfgRepName').value; document.getElementById('out-my-nit-cc').innerText = "C.C. / NIT: " + document.getElementById('cfgNit').value; document.getElementById('out-sig-name').innerText = document.getElementById('cfgRepName').value; document.getElementById('out-sig-id').innerText = "C.C. / NIT: " + document.getElementById('cfgNit').value; }
+        function updateFormUI() { const t = document.getElementById('docType').value; document.getElementById('pagoToggleContainer').style.display = (t === 'Cp') ? 'flex' : 'none'; if(t !== 'Cp') document.getElementById('isPaid').checked = false; document.getElementById('quoteValDiv').style.display = (t === 'Cz') ? 'block' : 'none'; }
+        function addItem() { const div = document.createElement('div'); div.className = 'item-list'; div.innerHTML = `<label>Descripción del servicio</label><input type="text" class="item-desc" oninput="updatePreview()"><div class="row"><div><label>Precio Unitario ($)</label><input type="number" class="item-price" value="0" oninput="updatePreview()"></div><div><label>Cantidad</label><input type="number" class="item-qty" value="1" oninput="updatePreview()"></div></div>`; document.getElementById('itemsContainer').appendChild(div); updatePreview(); }
+        
+        const formatCurrency = (num) => '$ ' + parseFloat(num).toLocaleString('es-CO');
+        const formatDateText = (dStr) => dStr ? new Date(dStr + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }) : "";
+
+        // --- ACTUALIZA VISTA PREVIA (SOLO VISUAL) ---
+        function updatePreview() {
+            const tipo = document.getElementById('docType').value;
+            document.getElementById('docNumber').value = getConsecutivo(tipo);
+            document.getElementById('out-doc-number-std').innerText = document.getElementById('docNumber').value;
+
+            if(tipo === 'Cc') { document.getElementById('layout-standard').style.display = 'none'; document.getElementById('layout-cc').style.display = 'block'; document.getElementById('out-main-title').innerText = "CUENTA DE COBRO"; } 
+            else { document.getElementById('layout-standard').style.display = 'flex'; document.getElementById('layout-cc').style.display = 'none'; document.getElementById('out-main-title').innerText = tipo === 'Cz' ? "COTIZACIÓN" : "SOPORTE DE PAGO"; document.getElementById('out-sub-title').innerText = tipo === 'Cz' ? "COTIZACIÓN DE SERVICIOS:" : "SOPORTE DE PAGO INTERNO:"; }
+            
+            document.getElementById('stamp').style.display = document.getElementById('isPaid').checked ? 'block' : 'none';
+
+            const cName = document.getElementById('clientName').value.toUpperCase() || 'CLIENTE MOSTRADOR';
+            const cIdText = document.getElementById('clientNit').value ? `${document.getElementById('clientIdType').value}: ${document.getElementById('clientNit').value}` : '';
+            const cDir = document.getElementById('clientAddress').value; const cTel = document.getElementById('clientPhone').value;
+
+            document.getElementById('out-date-std').innerText = formatDateText(document.getElementById('docDate').value);
+            document.getElementById('out-client-name-std').innerText = cName; document.getElementById('out-client-id-std').innerText = cIdText; document.getElementById('out-client-dir-std').innerText = cDir; document.getElementById('out-client-tel-std').innerText = cTel ? 'Tel: ' + cTel : '';
+            document.getElementById('out-client-name-cc').innerText = cName; document.getElementById('out-client-id-cc').innerText = cIdText; document.getElementById('out-client-dir-cc').innerText = cDir ? 'Dirección: ' + cDir : ''; document.getElementById('out-client-tel-cc').innerText = cTel ? 'Teléfono: ' + cTel : '';
+
+            const ci = document.getElementById('checkIn').value; const co = document.getElementById('checkOut').value; const guest = document.getElementById('guestName').value; const nStr = document.getElementById('nightsLabel').getAttribute('data-nights');
+            if(ci || co || guest || nStr) { document.getElementById('out-booking-details').style.display = 'block'; document.getElementById('out-checkin-container').style.display = ci ? 'inline' : 'none'; document.getElementById('out-checkin').innerText = ci; document.getElementById('out-checkout-container').style.display = co ? 'inline' : 'none'; document.getElementById('out-checkout').innerText = co; document.getElementById('out-nights-container').style.display = nStr ? 'inline' : 'none'; document.getElementById('out-nights').innerText = nStr; document.getElementById('out-guest-container').style.display = guest ? 'inline' : 'none'; document.getElementById('out-guest').innerText = guest; } else { document.getElementById('out-booking-details').style.display = 'none'; }
+
+            let tbody = '', total = 0; const descs = document.querySelectorAll('.item-desc'); const prices = document.querySelectorAll('.item-price'); const qtys = document.querySelectorAll('.item-qty');
+            for(let i=0; i<descs.length; i++) { let p = parseFloat(prices[i].value) || 0; let q = parseFloat(qtys[i].value) || 0; let sub = p * q; total += sub; if(descs[i].value.trim() !== "") tbody += `<tr><td>${descs[i].value}</td><td>${formatCurrency(p)}</td><td>${q}</td><td>${formatCurrency(sub)}</td></tr>`; }
+            document.getElementById('out-table-body').innerHTML = tbody; document.getElementById('out-subtotal').innerText = formatCurrency(total);
+
+            const abono = parseFloat(document.getElementById('abonoAmount').value) || 0; const saldo = Math.max(0, total - abono);
+            if(abono > 0) { document.getElementById('out-abono-row').style.display = 'flex'; document.getElementById('out-abono').innerText = "- " + formatCurrency(abono); document.getElementById('out-total-label').innerText = 'SALDO A PAGAR:'; } else { document.getElementById('out-abono-row').style.display = 'none'; document.getElementById('out-total-label').innerText = 'TOTAL:'; }
+            document.getElementById('out-total').innerText = formatCurrency(saldo); document.getElementById('out-amount-words').innerText = NumeroALetras(saldo); document.getElementById('out-amount-numbers').innerText = formatCurrency(saldo);
+
+            const b = document.getElementById('cfgBank').value.replace(/\n/g, '<br>');
+            if(tipo === 'Cc') { document.getElementById('out-note').innerHTML = `<strong>Solicito el favor que sea consignado a:</strong><br>${b}<br><br>Cordialmente,`; document.getElementById('out-signature').style.display = 'block'; }
+            else if (tipo === 'Cp') { document.getElementById('out-note').innerHTML = `<strong>Nota:</strong> Este documento se emite exclusivamente como comprobante administrativo de pago por servicios de hospedaje. Be'er Sheva 113 no opera actualmente con fines comerciales. Este registro valida la transacción bajo pacto de buena voluntad entre las partes.<br><br><strong>Medios de pago disponibles:</strong><br>${b}`; document.getElementById('out-signature').style.display = 'none'; }
+            else if (tipo === 'Cz') { document.getElementById('out-note').innerHTML = `<strong>Validez de la oferta:</strong> Esta cotización tiene una validez de ${document.getElementById('quoteValidity').value} a partir de la fecha de emisión.<br><br><strong>Medios de pago disponibles:</strong><br>${b}`; document.getElementById('out-signature').style.display = 'none'; }
+        }
+
+        // --- CONSTRUCCIÓN DEL PDF PURO VECTORIAL CON PDFMAKE ---
+        async function generateMergedPDF() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = 'flex'; // Mostrar Loader
+
+            try {
+                // 1. Recolectar Variables
+                const tipo = document.getElementById('docType').value; const isPaid = document.getElementById('isPaid').checked;
+                const docNumber = document.getElementById('docNumber').value; const docDate = formatDateText(document.getElementById('docDate').value);
+                
+                const cName = document.getElementById('clientName').value.toUpperCase() || 'CLIENTE MOSTRADOR';
+                const cIdText = document.getElementById('clientNit').value ? `${document.getElementById('clientIdType').value}: ${document.getElementById('clientNit').value}` : '';
+                const cDir = document.getElementById('clientAddress').value; const cTel = document.getElementById('clientPhone').value;
+
+                const cfgName = document.getElementById('cfgName').value; const cfgSub = document.getElementById('cfgSub').value;
+                const cfgRnt = document.getElementById('cfgRnt').value; const cfgRepName = document.getElementById('cfgRepName').value;
+                const cfgNit = document.getElementById('cfgNit').value; const cfgDir = document.getElementById('cfgDir').value;
+                const cfgTel = document.getElementById('cfgTel').value; const cfgEmail = document.getElementById('cfgEmail').value;
+                const cfgBank = document.getElementById('cfgBank').value;
+
+                // 2. Armar Tabla de Servicios
+                let tableBody = [
+                    [ { text: 'DESCRIPCIÓN DEL SERVICIO', fillColor: '#6b7260', color: 'white', bold: true }, { text: 'PRECIO', fillColor: '#6b7260', color: 'white', bold: true, alignment: 'center' }, { text: 'CANTIDAD', fillColor: '#6b7260', color: 'white', bold: true, alignment: 'center' }, { text: 'SUBTOTAL', fillColor: '#6b7260', color: 'white', bold: true, alignment: 'center' } ]
+                ];
+                let total = 0;
+                const descs = document.querySelectorAll('.item-desc'); const prices = document.querySelectorAll('.item-price'); const qtys = document.querySelectorAll('.item-qty');
+                for(let i=0; i<descs.length; i++) {
+                    if(descs[i].value.trim() !== "") {
+                        let p = parseFloat(prices[i].value) || 0; let q = parseFloat(qtys[i].value) || 0; let sub = p * q; total += sub;
+                        tableBody.push([ descs[i].value, { text: formatCurrency(p), alignment: 'center' }, { text: q.toString(), alignment: 'center' }, { text: formatCurrency(sub), alignment: 'center' } ]);
+                    }
+                }
+
+                // 3. Totales y Abonos
+                const abono = parseFloat(document.getElementById('abonoAmount').value) || 0;
+                const saldo = Math.max(0, total - abono);
+                let totalsBody = [ ['SUB TOTAL:', { text: formatCurrency(total), alignment: 'right' }] ];
+                if (abono > 0) totalsBody.push(['ABONO / ANTICIPO:', { text: '- ' + formatCurrency(abono), alignment: 'right', color: '#d32f2f', bold:true }]);
+                totalsBody.push([
+                    { text: abono > 0 ? 'SALDO A PAGAR:' : 'TOTAL:', bold: true, fillColor: '#6b7260', color: 'white' },
+                    { text: formatCurrency(saldo), alignment: 'right', bold: true, fillColor: '#6b7260', color: 'white' }
+                ]);
+
+                // 4. Booking Details (Noches)
+                const ci = document.getElementById('checkIn').value; const co = document.getElementById('checkOut').value;
+                const guest = document.getElementById('guestName').value; const nochesStr = document.getElementById('nightsLabel').getAttribute('data-nights');
+                let bookingArr = [];
+                if(ci) bookingArr.push(`CHECK IN: ${ci}`); if(co) bookingArr.push(`CHECK OUT: ${co}`); if(nochesStr) bookingArr.push(`DURACIÓN: ${nochesStr}`); if(guest) bookingArr.push(`HUÉSPED: ${guest}`);
+                const bookingText = bookingArr.join('   |   ');
+
+                // 5. Configurar Textos Condicionales
+                let docTitle = tipo === 'Cc' ? 'CUENTA DE COBRO' : (tipo === 'Cz' ? 'COTIZACIÓN' : 'SOPORTE DE PAGO');
+                let nota = '';
+                if(tipo === 'Cc') nota = `Solicito el favor que sea consignado a:\n${cfgBank}\n\nCordialmente,`;
+                else if (tipo === 'Cp') nota = `Nota: Este documento se emite exclusivamente como comprobante administrativo de pago por servicios de hospedaje. Be'er Sheva 113 no opera actualmente con fines comerciales. Este registro valida la transacción bajo pacto de buena voluntad entre las partes.\n\nMedios de pago disponibles:\n${cfgBank}`;
+                else if (tipo === 'Cz') nota = `Validez de la oferta: Esta cotización tiene una validez de ${document.getElementById('quoteValidity').value} a partir de la fecha de emisión.\n\nMedios de pago disponibles:\n${cfgBank}`;
+
+                // 6. Construir Definición PDF (Motor pdfmake)
+                let content = [];
+                
+                // --- CABECERA COMÚN ---
+                content.push({
+                    columns: [
+                        { text: [ { text: cfgName + '\n', fontSize: 24, bold: true }, { text: cfgSub + '\n', fontSize: 16 }, { text: 'RNT ' + cfgRnt, fontSize: 10 } ], width: '*' },
+                        { text: docTitle, fontSize: 18, bold: true, alignment: 'right', width: 'auto', margin: [0, 5, 0, 0] }
+                    ],
+                    margin: [0, 0, 0, 30]
+                });
+
+                // --- BLOQUE CLIENTE Y DOCUMENTO ---
+                if (tipo === 'Cc') {
+                    let ccInfo = [ { text: 'EMPRESA / CLIENTE:\n', bold: true }, { text: cName + '\n', bold: true, fontSize: 13 } ];
+                    if(cIdText) ccInfo.push(cIdText + '\n'); if(cDir) ccInfo.push('Dirección: ' + cDir + '\n'); if(cTel) ccInfo.push('Teléfono: ' + cTel + '\n');
+                    ccInfo.push('\nDEBE A:\n', { text: cfgRepName.toUpperCase() + '\n', bold: true, fontSize: 14 }, 'C.C. / NIT: ' + cfgNit + '\n\n', 'La suma de: ', { text: NumeroALetras(saldo), bold: true }, ' (' + formatCurrency(saldo) + ')\n\n', 'Por concepto de:');
+                    
+                    content.push({ text: ccInfo, alignment: 'center', fontSize: 11, margin: [0, 0, 0, 20] });
+                } else {
+                    let cInfoRight = [ { text: 'INFORMACIÓN DEL CLIENTE:\n', bold: true }, { text: cName + '\n', bold: true } ];
+                    if(cIdText) cInfoRight.push(cIdText + '\n'); if(cDir) cInfoRight.push(cDir + '\n'); if(cTel) cInfoRight.push('Tel: ' + cTel);
+
+                    content.push({
+                        columns: [
+                            { text: [ { text: (tipo === 'Cz' ? 'COTIZACIÓN DE SERVICIOS:\n' : 'SOPORTE DE PAGO INTERNO:\n'), bold: true }, 'N° ' + docNumber + '\n', 'FECHA DE EMISIÓN: ' + docDate + '\n', 'CIUDAD: Bogotá D.C., Colombia\n', 'NIT/CC: ' + cfgNit + ' ' + cfgRepName ], fontSize: 10, width: '*' },
+                            { text: cInfoRight, alignment: 'right', fontSize: 10, width: '*' }
+                        ],
+                        margin: [0, 0, 0, 25]
+                    });
+                }
+
+                // --- DETALLES DE ESTADÍA ---
+                if (bookingText !== "") {
+                    content.push({ text: bookingText, fillColor: '#e9eadf', margin: [0, 0, 0, 15], padding: 8, fontSize: 9, alignment: 'center' });
+                }
+
+                // --- TABLA SERVICIOS ---
+                content.push({
+                    table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: tableBody },
+                    layout: { hLineWidth: function () { return 1; }, vLineWidth: function () { return 0; }, hLineColor: function () { return '#d4d4d4'; }, paddingTop: function() { return 10; }, paddingBottom: function() { return 10; } },
+                    margin: [0, 0, 0, 15]
+                });
+
+                // --- TOTALES ---
+                content.push({
+                    columns: [ { width: '*', text: '' }, { width: 250, table: { widths: ['*', '*'], body: totalsBody }, layout: { hLineWidth: function() { return 2; }, vLineWidth: function() { return 0; }, hLineColor: function() { return '#ffffff'; }, paddingTop: function() { return 6; }, paddingBottom: function() { return 6; } } } ], margin: [0, 0, 0, 30]
+                });
+
+                // --- NOTAS FINALES ---
+                content.push({ text: nota, fontSize: 10, width: '70%', margin: [0, 0, 0, 40] });
+
+                // --- FIRMA (SOLO CC) ---
+                if (tipo === 'Cc') {
+                    content.push({ stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 200, y2: 0, lineWidth: 1 }] }, { text: cfgRepName, bold: true, margin: [0, 5, 0, 0] }, 'C.C. / NIT: ' + cfgNit ] });
+                }
+
+                // 7. Renderizado Final del PDF Base (Sello actualizado a rotación -15° y color exacto)
+                const docDefinition = {
+                    pageSize: 'LETTER',
+                    pageMargins: [40, 40, 40, 60],
+                    watermark: isPaid ? { text: 'PAGADO', color: '#b71c1c', opacity: 0.4, bold: true, angle: -15, fontSize: 60 } : null,
+                    content: content,
+                    footer: function() { return { columns: [ { text: [ { text: 'CONTACTO:\n', bold: true }, 'Dirección: ' + cfgDir + '\n', 'Teléfono: ' + cfgTel + '\n', 'Email: ' + cfgEmail ], fontSize: 9 }, { text: [ { text: cfgName + '\n', fontSize: 14, bold: true }, 'Bogotá, Colombia' ], alignment: 'right', fontSize: 9 } ], margin: [40, 10, 40, 0] }; },
+                    defaultStyle: { fontSize: 10, color: '#1a1a1a' }
+                };
+
+                const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+                
+                // 8. Unir Anexos (RUT/RNT) con pdf-lib y Descargar
+                pdfDocGenerator.getBuffer(async (mainPdfBuffer) => {
+                    const { PDFDocument } = PDFLib;
+                    const finalPdf = await PDFDocument.load(mainPdfBuffer);
+
+                    const files = document.getElementById('attachFiles').files;
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        if (file.type !== 'application/pdf') continue; 
+                        const fileBuffer = await file.arrayBuffer();
+                        const attachedPdf = await PDFDocument.load(fileBuffer);
+                        const copiedPages = await finalPdf.copyPages(attachedPdf, attachedPdf.getPageIndices());
+                        copiedPages.forEach((page) => finalPdf.addPage(page));
+                    }
+
+                    const mergedPdfBytes = await finalPdf.save();
+                    const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    const filename = `BeErSheva_${docNumber}_${cName.replace(/\s+/g, '_').substring(0,20)}.pdf`;
+                    link.download = filename;
+                    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+
+                    incrementarConsecutivo(tipo); updatePreview(); overlay.style.display = 'none';
+                });
+
+            } catch (error) {
+                console.error(error); alert("Error al generar PDF vectorial. Revisa la consola."); overlay.style.display = 'none';
+            }
+        }
+
+        window.onload = () => { const today = new Date(); document.getElementById('docDate').value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0'); loadSettings(); updateFormUI(); updatePreview(); };
+    </script>
+</body>
+</html>
