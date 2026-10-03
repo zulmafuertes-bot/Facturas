@@ -33,6 +33,10 @@
         .checkbox-row { display: flex; align-items: center; margin-top: 15px; background: #e8f5e9; padding: 10px; border-radius: 4px; border: 1px solid #c8e6c9;}
         .checkbox-row input { width: auto; margin: 0 10px 0 0; transform: scale(1.5); }
         .checkbox-row label { margin: 0; font-size: 15px; color: #2e7d32; cursor: pointer; }
+        .attachment-options { margin-top: 10px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; }
+        .attachment-option { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0; font-weight: normal; }
+        .attachment-option input { width: auto; margin: 2px 0 0; }
+        .attachment-help { margin: 8px 0 0; color: #555; font-size: 12px; line-height: 1.4; }
         
         /* ESTILOS DEL PREVISUALIZADOR (No afectan al PDF puro) */
         #pdf-container { width: 800px; background-color: var(--bg); padding: 40px; box-sizing: border-box; color: #1a1a1a; font-family: Arial, sans-serif; margin: 0 auto; position: relative; }
@@ -154,7 +158,14 @@
 
             <hr style="margin:20px 0; border:0; border-top:1px solid #ccc;">
             <h3>Documentos Anexos</h3>
-            <label>Adjuntar archivos de soporte (RUT, RNT, Bancario) (Solo PDFs)</label>
+            <label>Selecciona los documentos de soporte que deseas agregar</label>
+            <div class="attachment-options">
+                <label class="attachment-option"><input type="checkbox" class="preset-attachment" value="RUT 2026 Sebastián Aponte.pdf"><span>RUT — Sebastián Aponte</span></label>
+                <label class="attachment-option"><input type="checkbox" class="preset-attachment" value="RNT CERTIFICADO Be'er Sheva 113.pdf"><span>Certificado RNT — Be'er Sheva 113</span></label>
+                <label class="attachment-option"><input type="checkbox" class="preset-attachment" value="Certificado bancario Bancolombia.pdf"><span>Certificado bancario — Bancolombia</span></label>
+            </div>
+            <p class="attachment-help">Si abres este archivo directamente desde tu equipo, selecciona también aquí los documentos marcados. Desde la versión web o instalada se cargarán automáticamente. Puedes añadir otros PDF a continuación.</p>
+            <label for="attachFiles">Seleccionar archivos PDF adicionales</label>
             <input type="file" id="attachFiles" multiple accept=".pdf" style="background:#fff;">
 
             <button onclick="generateMergedPDF()" style="margin-top: 30px; font-size: 18px; padding: 15px;">📥 GENERAR DOCUMENTO COMPLETO</button>
@@ -416,34 +427,58 @@ Cuenta de ahorros Bancolombia: 033-877297-38</textarea>
 
                 const pdfDocGenerator = pdfMake.createPdf(docDefinition);
                 
-                // 8. Unir Anexos (RUT/RNT) con pdf-lib y Descargar
-                pdfDocGenerator.getBuffer(async (mainPdfBuffer) => {
-                    const { PDFDocument } = PDFLib;
-                    const finalPdf = await PDFDocument.load(mainPdfBuffer);
+                // 8. Unir anexos seleccionados y descargar
+                const mainPdfBuffer = await new Promise((resolve) => pdfDocGenerator.getBuffer(resolve));
+                const { PDFDocument } = PDFLib;
+                const finalPdf = await PDFDocument.load(mainPdfBuffer);
+                const selectedFiles = Array.from(document.querySelectorAll('.preset-attachment:checked'));
+                const manualFiles = Array.from(document.getElementById('attachFiles').files);
+                const attachments = [];
+                const includedNames = new Set();
 
-                    const files = document.getElementById('attachFiles').files;
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        if (file.type !== 'application/pdf') continue; 
-                        const fileBuffer = await file.arrayBuffer();
-                        const attachedPdf = await PDFDocument.load(fileBuffer);
-                        const copiedPages = await finalPdf.copyPages(attachedPdf, attachedPdf.getPageIndices());
-                        copiedPages.forEach((page) => finalPdf.addPage(page));
+                for (const checkbox of selectedFiles) {
+                    const fileName = checkbox.value;
+                    if (window.location.protocol === 'file:') {
+                        const localFile = manualFiles.find((file) => file.name === fileName);
+                        if (!localFile) {
+                            throw new Error(`Selecciona también "${fileName}" en el control de archivos PDF adicionales.`);
+                        }
+                        attachments.push({ name: localFile.name, bytes: await localFile.arrayBuffer() });
+                    } else {
+                        const fileUrl = new URL(encodeURIComponent(fileName), window.location.href);
+                        const response = await fetch(fileUrl);
+                        if (!response.ok) {
+                            throw new Error(`No se pudo cargar el documento "${fileName}" (${response.status}).`);
+                        }
+                        attachments.push({ name: fileName, bytes: await response.arrayBuffer() });
                     }
+                    includedNames.add(fileName);
+                }
 
-                    const mergedPdfBytes = await finalPdf.save();
-                    const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    const filename = `BeErSheva_${docNumber}_${cName.replace(/\s+/g, '_').substring(0,20)}.pdf`;
-                    link.download = filename;
-                    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                for (const file of manualFiles) {
+                    if (file.type !== 'application/pdf' || includedNames.has(file.name)) continue;
+                    attachments.push({ name: file.name, bytes: await file.arrayBuffer() });
+                    includedNames.add(file.name);
+                }
 
-                    incrementarConsecutivo(tipo); updatePreview(); overlay.style.display = 'none';
-                });
+                for (const attachment of attachments) {
+                    const attachedPdf = await PDFDocument.load(attachment.bytes);
+                    const copiedPages = await finalPdf.copyPages(attachedPdf, attachedPdf.getPageIndices());
+                    copiedPages.forEach((page) => finalPdf.addPage(page));
+                }
+
+                const mergedPdfBytes = await finalPdf.save();
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                const filename = `BeErSheva_${docNumber}_${cName.replace(/\s+/g, '_').substring(0,20)}.pdf`;
+                link.download = filename;
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+
+                incrementarConsecutivo(tipo); updatePreview(); overlay.style.display = 'none';
 
             } catch (error) {
-                console.error(error); alert("Error al generar PDF vectorial. Revisa la consola."); overlay.style.display = 'none';
+                console.error(error); alert("Error al generar el PDF: " + error.message); overlay.style.display = 'none';
             }
         }
 
